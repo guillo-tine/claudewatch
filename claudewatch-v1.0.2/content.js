@@ -19,12 +19,17 @@ let modelObserver = null;
 let currentExchange = null;
 let streamStabilityTimer = null;
 let lastCaptureTime = 0;
-const STREAM_STABLE_DELAY = 500;
-const CAPTURE_DEBOUNCE_MS = 1000;
+let _passiveCaptureTimer = null;
+const STREAM_STABLE_DELAY   = 500;
+const CAPTURE_DEBOUNCE_MS   = 1000;
+const PASSIVE_CAPTURE_DELAY = 350;   // ms after SSE ends before synthesising passive exchange
+const MAX_STREAM_WAIT_MS    = 30000; // onStreamStable hard-timeout before falling back to partial
 
 // API data from interceptor.js (runs in MAIN world, posts via window.postMessage)
 let _apiTokensIn = null;
 let _apiTokensOut = null;
+let _apiDurationMs = null;   // full SSE round-trip duration
+let _apiConvId = null;        // conversation UUID extracted from the SSE request URL
 
 // Org ID from interceptor.js — needed for cross-device sync API calls
 let _orgId = null;
@@ -35,9 +40,16 @@ window.addEventListener('message', (evt) => {
   if (!evt.data?.__cw || evt.source !== window) return;
 
   if (evt.data.type === '__CW_TOKENS') {
-    _apiTokensIn = evt.data.inputTokens ?? _apiTokensIn;
-    _apiTokensOut = evt.data.outputTokens ?? _apiTokensOut;
-    dbg('__CW_TOKENS received: in=' + _apiTokensIn + ' out=' + _apiTokensOut);
+    _apiTokensIn   = evt.data.inputTokens  ?? _apiTokensIn;
+    _apiTokensOut  = evt.data.outputTokens ?? _apiTokensOut;
+    _apiDurationMs = evt.data.durationMs   ?? _apiDurationMs;
+    _apiConvId     = evt.data.convId       ?? _apiConvId;
+    dbg('__CW_TOKENS received: in=' + _apiTokensIn + ' out=' + _apiTokensOut +
+        ' convId=' + (_apiConvId ? _apiConvId.slice(0,8) + '…' : 'null'));
+    // Passive capture: if captureUserSend() was never called for this SSE stream
+    // (message sent from another device/app, or click/key listener missed it),
+    // synthesise an exchange directly from the SSE data after a short delay.
+    if (!currentExchange && enabled) schedulePassiveCapture();
   }
 
   if (evt.data.type === '__CW_ORG_ID' && evt.data.orgId) {
@@ -229,8 +241,13 @@ function attachModelObserver() {
 
 // ---- Send detection ----
 
+let _sendListenersAttached = false;
+
 function attachSendListeners() {
-  // Use capture-phase delegation so React's event handling doesn't block us
+  // Listeners are on document (capture phase) — they survive SPA navigation automatically.
+  // Guard prevents re-adding on every handleNavigation() call which would fire events 2×, 3×…
+  if (_sendListenersAttached) return;
+  _sendListenersAttached = true;
   document.addEventListener('keydown', onKeydown, true);
   document.addEventListener('click', onDocumentClick, true);
   dbg('send listeners attached');
@@ -252,6 +269,11 @@ function onDocumentClick(e) {
 }
 
 function captureUserSend() {
+  // Cancel any pending passive capture — the user IS sending from this tab,
+  // so the active path (captureResponseComplete) will produce the exchange.
+  clearTimeout(_passiveCaptureTimer);
+  _passiveCaptureTimer = null;
+
   // Debounce: ignore if another capture happened within 1s (keydown + click can both fire)
   const now = Date.now();
   if (now - lastCaptureTime < CAPTURE_DEBOUNCE_MS) return;
@@ -273,8 +295,10 @@ function captureUserSend() {
     });
 
     // Reset interceptor data so prior exchange doesn't bleed into this one
-    _apiTokensIn = null;
-    _apiTokensOut = null;
+    _apiTokensIn   = null;
+    _apiTokensOut  = null;
+    _apiDurationMs = null;
+    _apiConvId     = null;
 
     currentExchange = {
       timestamp: new Date().toISOString(),
@@ -335,8 +359,15 @@ function onStreamStable() {
     return;
   }
   // If the assistant response hasn't appeared in the DOM yet (happens during the
-  // thinking/loading gap), keep waiting rather than capturing an empty turn.
+  // thinking/loading gap), keep waiting — but enforce a hard upper limit so this
+  // loop can never spin forever when the platform selector stops matching.
   if (!platform.getLastAssistantTurn()) {
+    const waitedMs = currentExchange ? Date.now() - currentExchange.sendAt : MAX_STREAM_WAIT_MS;
+    if (waitedMs >= MAX_STREAM_WAIT_MS) {
+      dbg('onStreamStable: assistant turn not found after', waitedMs, 'ms — capturing partial');
+      captureResponseComplete(true);
+      return;
+    }
     streamStabilityTimer = setTimeout(onStreamStable, STREAM_STABLE_DELAY);
     return;
   }
@@ -373,8 +404,10 @@ function captureResponseComplete(partial) {
         source = 'dom_estimated';
         dbg('captureResponseComplete: SSE unavailable, DOM estimation', { tokensIn, tokensOut });
       }
-      _apiTokensIn = null;
-      _apiTokensOut = null;
+      _apiTokensIn   = null;
+      _apiTokensOut  = null;
+      _apiDurationMs = null;
+      _apiConvId     = null;
 
       const tokensPerSecond = responseDurationMs > 0
         ? parseFloat((tokensOut / (responseDurationMs / 1000)).toFixed(2))
@@ -423,6 +456,100 @@ function captureResponseComplete(partial) {
       dbg('captureResponseComplete error:', err.message);
     }
   }, 200);
+}
+
+// ---- Passive (SSE-only) capture ----
+// Fires when __CW_TOKENS arrives but captureUserSend() was never called.
+// Covers: message sent from mobile / Claude desktop / another browser tab,
+// plus cases where the keyboard/click listener missed the send event.
+//
+// Background-usage filter:
+//   • No convId in the SSE request URL  → background feature (cowork, code, projects) — skip.
+//   • Page shows conversation A, SSE is for conversation B → background context — skip.
+//   • sseConvId matches page convId (or page has no convId yet) → synthesise exchange.
+
+function schedulePassiveCapture() {
+  clearTimeout(_passiveCaptureTimer);
+  _passiveCaptureTimer = setTimeout(executePassiveCapture, PASSIVE_CAPTURE_DELAY);
+}
+
+function executePassiveCapture() {
+  _passiveCaptureTimer = null;
+
+  // Need at least output tokens to record a meaningful exchange.
+  if (_apiTokensOut == null && _apiTokensIn == null) return;
+
+  const sseConvId  = _apiConvId;
+  const pageConvId = getCurrentConvId();
+
+  // Filter 1: no conversation context → background API usage, not a user chat message.
+  if (!sseConvId) {
+    dbg('passive capture: skip — SSE has no convId (background usage)');
+    _apiTokensIn = null; _apiTokensOut = null; _apiDurationMs = null; _apiConvId = null;
+    return;
+  }
+
+  // Filter 2: page is on a specific conversation that doesn't match the SSE stream
+  //           → Claude is doing work for a different conversation in the background.
+  if (pageConvId && sseConvId !== pageConvId) {
+    dbg('passive capture: skip — SSE convId', sseConvId.slice(0,8), '≠ page convId',
+        pageConvId.slice(0,8), '(background context)');
+    _apiTokensIn = null; _apiTokensOut = null; _apiDurationMs = null; _apiConvId = null;
+    return;
+  }
+
+  // Debounce: if captureUserSend ran < 1s ago the active path already owns this exchange.
+  const now = Date.now();
+  if (now - lastCaptureTime < CAPTURE_DEBOUNCE_MS) {
+    dbg('passive capture: skip — within debounce window of active send');
+    _apiTokensIn = null; _apiTokensOut = null; _apiDurationMs = null; _apiConvId = null;
+    return;
+  }
+  lastCaptureTime = now;
+
+  try {
+    const { model, adaptive } = (platform ? platform.getModelInfo() : { model: 'unknown', adaptive: false });
+    const tokensIn       = _apiTokensIn  != null ? _apiTokensIn  : 0;
+    const tokensOut      = _apiTokensOut != null ? _apiTokensOut : 0;
+    const durationMs     = _apiDurationMs;
+    const tokensPerSec   = (durationMs && durationMs > 0)
+      ? parseFloat((tokensOut / (durationMs / 1000)).toFixed(2))
+      : null;
+
+    dbg('passive capture: synthesising exchange', {
+      tokensIn, tokensOut, durationMs, model,
+      convId: sseConvId.slice(0,8) + '…',
+    });
+
+    const exchange = {
+      timestamp:                 new Date().toISOString(),
+      completedAt:               new Date().toISOString(),
+      model,
+      adaptiveMode:              adaptive,
+      tokensIn,
+      tokensOut,
+      hasAttachments:            false,
+      attachmentTokensEstimated: 0,
+      responseDurationMs:        durationMs,
+      tokensPerSecond:           tokensPerSec,
+      hitLimit:                  false,
+      limitMessage:              null,
+      thinkingDurationMs:        null,
+      partial:                   false,
+      conversationId:            sseConvId,
+      source:                    'sse_passive',
+    };
+
+    chrome.runtime.sendMessage({ type: 'EXCHANGE_COMPLETE', exchange });
+
+    _apiTokensIn = null; _apiTokensOut = null; _apiDurationMs = null; _apiConvId = null;
+
+    chrome.runtime.sendMessage({ type: 'POLL_NOW', activeConvId: sseConvId }).catch(() => {});
+
+  } catch (err) {
+    logError('executePassiveCapture', err);
+    dbg('executePassiveCapture error:', err.message);
+  }
 }
 
 // ---- Partial capture on tab close ----

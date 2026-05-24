@@ -133,6 +133,14 @@
     extractIds(args[0]);
     const requestUrl = toUrl(args[0]);
 
+    // Capture timing and conversation context before the request starts.
+    // These are passed into parseSSE so content.js can create a passive exchange
+    // if captureUserSend() never fired (e.g. message sent from mobile / another device,
+    // or the keyboard/click listener missed the event).
+    const fetchStartMs = Date.now();
+    const convIdMatch = requestUrl.match(/\/chat_conversations\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+    const requestConvId = convIdMatch ? convIdMatch[1] : null;
+
     let response;
     try {
       response = await _fetch(...args);
@@ -146,7 +154,7 @@
     if (ct.includes('text/event-stream')) {
       try {
         const [body1, body2] = response.body.tee();
-        parseSSE(body2); // non-blocking
+        parseSSE(body2, fetchStartMs, requestConvId); // non-blocking
         return new Response(body1, {
           status: response.status,
           statusText: response.statusText,
@@ -168,7 +176,7 @@
     return response;
   };
 
-  async function parseSSE(body) {
+  async function parseSSE(body, fetchStartMs, requestConvId) {
     const reader = body.getReader();
     const dec = new TextDecoder();
     let buf = '';
@@ -212,8 +220,13 @@
     }
 
     if (inputTokens != null || outputTokens != null) {
-      dbg('parseSSE complete: inputTokens=' + inputTokens + ' outputTokens=' + outputTokens);
-      post('__CW_TOKENS', { inputTokens, outputTokens });
+      // durationMs covers the full SSE stream (request sent → last token received).
+      // convId lets content.js distinguish user-initiated chats from background features
+      // (cowork, code, projects) which fire SSE on different/null conversation IDs.
+      const durationMs = (fetchStartMs != null) ? (Date.now() - fetchStartMs) : null;
+      dbg('parseSSE complete: inputTokens=' + inputTokens + ' outputTokens=' + outputTokens +
+          ' durationMs=' + durationMs + ' convId=' + (requestConvId ? requestConvId.slice(0,8) + '…' : 'null'));
+      post('__CW_TOKENS', { inputTokens, outputTokens, durationMs, convId: requestConvId });
     } else {
       dbg('parseSSE complete: no token counts found in stream');
     }

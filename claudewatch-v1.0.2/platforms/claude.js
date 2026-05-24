@@ -66,8 +66,22 @@ export function getConversationContainer() {
 }
 
 export function getLastAssistantTurn() {
-  const turns = document.querySelectorAll(SELECTORS.assistantTurn);
-  return turns.length ? turns[turns.length - 1] : null;
+  // Primary: data-is-streaming covers both active and completed assistant turns.
+  let turns = document.querySelectorAll(SELECTORS.assistantTurn);
+  if (turns.length) return turns[turns.length - 1];
+
+  // Fallbacks — tried in order of specificity. Claude.ai occasionally renames
+  // CSS classes but data-testid and role attributes are far more stable.
+  const fallbacks = [
+    '[data-testid="assistant-message"]',
+    '[data-message-author-role="assistant"]',
+    '[data-testid="ai-message"]',
+  ];
+  for (const sel of fallbacks) {
+    turns = document.querySelectorAll(sel);
+    if (turns.length) return turns[turns.length - 1];
+  }
+  return null;
 }
 
 export function getLastUserTurn() {
