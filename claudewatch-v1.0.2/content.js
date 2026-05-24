@@ -5,7 +5,7 @@
  */
 
 // ---- Debug ----
-const CW_DEBUG = true;
+const CW_DEBUG = false; // set to true locally to trace issues; never true in a release build
 const dbg = (...a) => { if (CW_DEBUG) console.log('[CW:ct]', new Date().toTimeString().slice(0,8), ...a); };
 
 // ---- Module handles (loaded in init) ----
@@ -622,9 +622,22 @@ async function handleConversationSync({ lastSyncedAt, convSyncState, sseConvIds 
       }
     }
 
+    // Prune convSyncState to 200 most recently-updated conversations to prevent
+    // unbounded local storage growth (a power user with thousands of conversations
+    // could otherwise accumulate megabytes of state data).
+    const MAX_SYNC_CONVS = 200;
+    let finalState = newState;
+    if (Object.keys(newState).length > MAX_SYNC_CONVS) {
+      const pruned = Object.entries(newState)
+        .sort(([, a], [, b]) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
+        .slice(0, MAX_SYNC_CONVS);
+      finalState = Object.fromEntries(pruned);
+      dbg('convSyncState pruned from', Object.keys(newState).length, 'to', MAX_SYNC_CONVS);
+    }
+
     dbg('handleConversationSync complete: exchanges=' + exchanges.length +
-        ' stateConvs=' + Object.keys(newState).length);
-    return { exchanges, newState };
+        ' stateConvs=' + Object.keys(finalState).length);
+    return { exchanges, newState: finalState };
 
   } catch (err) {
     dbg('handleConversationSync top-level error:', err.message);

@@ -149,12 +149,17 @@ $('export-btn').addEventListener('click', () => {
 
 // ---- Community stats ----
 
-async function supabaseFetch(path) {
+// GET for table queries; POST for RPC calls (PostgREST only allows GET on STABLE/IMMUTABLE RPCs)
+async function supabaseFetch(path, body = null) {
+  const isPost = body !== null;
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method: isPost ? 'POST' : 'GET',
     headers: {
+      'Content-Type': 'application/json',
       'apikey': SUPABASE_ANON_KEY,
       'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
     },
+    ...(isPost ? { body: JSON.stringify(body) } : {}),
   });
   if (!res.ok) throw new Error(`Supabase fetch failed: ${res.status}`);
   return res.json();
@@ -166,8 +171,8 @@ async function loadCommunityStats() {
 
     // Aggregate stats via Supabase RPC
     const [statsData, posts] = await Promise.all([
-      supabaseFetch(`rpc/community_stats?since=${encodeURIComponent(since24h)}`),
-      supabaseFetch(`community_posts?flagged=eq.false&order=created_at.desc&limit=20`),
+      supabaseFetch('rpc/community_stats', { since: since24h }),           // POST — RPC requires it
+      supabaseFetch('community_posts?flagged=eq.false&order=created_at.desc&limit=20'), // GET — table query
     ]);
 
     if (statsData) {

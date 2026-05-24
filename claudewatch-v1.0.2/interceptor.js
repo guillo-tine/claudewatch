@@ -16,7 +16,7 @@
   window.__cw_installed = true;
 
   // ---- Debug ----
-  const CW_DEBUG = true;
+  const CW_DEBUG = false; // set to true locally to trace issues; never true in a release build
   const dbg = (...a) => { if (CW_DEBUG) console.log('[CW:ix]', new Date().toTimeString().slice(0,8), ...a); };
 
   dbg('interceptor installed');
@@ -201,7 +201,8 @@
             const pct = findUsagePct(evt);
             if (pct != null) {
               dbg('SSE usage% found in event:', pct + '%', '(type=' + evt.type + ')');
-              post('__CW_USAGE_PCT', { usagePercent: pct });
+              // resetsInMinutes not available from raw SSE events — pass null explicitly
+              post('__CW_USAGE_PCT', { usagePercent: pct, resetsInMinutes: null });
             }
           } catch (_) {}
         }

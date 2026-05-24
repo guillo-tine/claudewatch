@@ -5,7 +5,7 @@
  */
 
 // ---- Debug ----
-const CW_DEBUG = true;
+const CW_DEBUG = false; // set to true locally to trace issues; never true in a release build
 const dbg = (...a) => { if (CW_DEBUG) console.log('[CW:bg]', new Date().toTimeString().slice(0,8), ...a); };
 
 // ---- Config ----
