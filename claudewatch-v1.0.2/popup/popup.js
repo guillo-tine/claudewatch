@@ -74,9 +74,20 @@ async function renderStats() {
     $('usage-pct').textContent = `${pct}%`;
 
     if (lastUsageSnapshot.resetsInMinutes != null) {
-      const h = Math.floor(lastUsageSnapshot.resetsInMinutes / 60);
-      const m = lastUsageSnapshot.resetsInMinutes % 60;
-      $('usage-reset').textContent = `resets in ${h > 0 ? `${h}h ` : ''}${m}m`;
+      const totalMins = lastUsageSnapshot.resetsInMinutes;
+      let resetStr;
+      if (totalMins >= 1440) {
+        const d = Math.floor(totalMins / 1440);
+        const h = Math.floor((totalMins % 1440) / 60);
+        resetStr = h > 0 ? `${d}d ${h}h` : `${d}d`;
+      } else if (totalMins >= 60) {
+        const h = Math.floor(totalMins / 60);
+        const m = totalMins % 60;
+        resetStr = m > 0 ? `${h}h ${m}m` : `${h}h`;
+      } else {
+        resetStr = `${totalMins}m`;
+      }
+      $('usage-reset').textContent = `resets in ${resetStr}`;
     }
 
     const delta = lastUsageSnapshot.sessionDelta;

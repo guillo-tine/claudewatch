@@ -1,8 +1,24 @@
 # ClaudeWatch
 
-Community-driven transparency for Claude usage limits. A Chrome extension that captures anonymous usage metadata from claude.ai and feeds a public dashboard — because Anthropic doesn't publish this information.
+![ClaudeWatch](assets/banner.png)
 
-**No message content is ever collected or transmitted.**
+<p align="center">
+  <img src="assets/logo.png" alt="ClaudeWatch Logo" width="80" />
+</p>
+
+<p align="center">
+  <strong>Community-driven transparency for Claude usage limits.</strong><br/>
+  A Chrome extension that captures anonymous usage metadata from claude.ai and feeds a public dashboard — because Anthropic doesn't publish this information.
+</p>
+
+<p align="center">
+  <a href="https://github.com/guillo-tine/claudewatch/releases/latest"><img src="https://img.shields.io/github/v/release/guillo-tine/claudewatch?label=download&color=7ab3cc" alt="Latest Release"/></a>
+  <img src="https://img.shields.io/badge/manifest-v3-blue" alt="MV3"/>
+  <img src="https://img.shields.io/badge/data-anonymous-green" alt="Anonymous"/>
+  <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="MIT"/>
+</p>
+
+> **No message content is ever collected or transmitted.** Only token counts (integers), response times, and rate-limit booleans leave your browser.
 
 ---
 
@@ -10,10 +26,11 @@ Community-driven transparency for Claude usage limits. A Chrome extension that c
 
 ```
 claudewatch/
-├── extension/              Chrome extension (Manifest V3)
+├── claudewatch-v1.0.2/     Chrome extension (Manifest V3) — load this folder
 │   ├── manifest.json
 │   ├── background.js       Service worker: identity, polling, Supabase submission
 │   ├── content.js          Injected into claude.ai: captures exchange metadata
+│   ├── interceptor.js      Runs in MAIN world: intercepts fetch/SSE streams
 │   ├── popup/              Extension popup UI (3 tabs: stats, community, settings)
 │   ├── lib/
 │   │   └── tokenizer.js    Pure-JS BPE token estimator (no network, no WASM required)
@@ -21,11 +38,12 @@ claudewatch/
 │   │   └── claude.js       claude.ai DOM adapter (future: chatgpt.js, gemini.js)
 │   └── icons/
 ├── dashboard/              Vercel / Next.js public dashboard
-│   ├── pages/              index.jsx, community.jsx, me.jsx
+│   ├── pages/              index.jsx (charts), community.jsx, me.jsx (personal stats)
 │   ├── components/         StatCard, RangeToggle
 │   └── lib/                supabase.js, chartUtils.js
 ├── supabase/
-│   └── schema.sql          All tables, RLS policies, triggers, and RPC functions
+│   └── migrations/         Versioned SQL migrations (schema, RLS, triggers, RPCs)
+├── assets/                 Banner and logo images
 └── docs/
     ├── privacy-policy.md
     ├── about.md
@@ -34,19 +52,26 @@ claudewatch/
 
 ---
 
-## Quick Start
+## Install (pre-built)
+
+1. Download `claudewatch-v1.0.2.zip` from the [latest release](https://github.com/guillo-tine/claudewatch/releases/latest)
+2. Unzip it
+3. Open Chrome → `chrome://extensions` → Enable **Developer mode** → **Load unpacked** → select the unzipped folder
+
+---
+
+## Quick Start (self-hosted)
 
 ### 1. Supabase
 
 1. Create a free project at [supabase.com](https://supabase.com)
-2. Run `supabase/schema.sql` in the SQL editor
+2. Run all files in `supabase/migrations/` in order in the SQL editor
 3. Copy your **project URL** and **anon public key**
 
 ### 2. Extension
 
-1. Replace `YOUR_PROJECT` and `YOUR_ANON_KEY` in `extension/background.js` and `extension/popup/popup.js`
-2. Add icons to `extension/icons/` (icon16.png, icon48.png, icon128.png)
-3. Open Chrome → `chrome://extensions` → Enable Developer mode → Load unpacked → select `extension/`
+1. Open `claudewatch-v1.0.2/background.js` and replace `SUPABASE_URL` / `SUPABASE_ANON_KEY` with your values
+2. Open Chrome → `chrome://extensions` → Enable Developer mode → Load unpacked → select `claudewatch-v1.0.2/`
 
 ### 3. Dashboard
 
@@ -113,9 +138,9 @@ The Next.js dashboard reads from Supabase (public anon key, RLS allows SELECT) a
 
 ## Platform Expansion
 
-The claude.ai-specific DOM logic is isolated in `extension/platforms/claude.js`. To add a new platform:
+The claude.ai-specific DOM logic is isolated in `claudewatch-v1.0.2/platforms/claude.js`. To add a new platform:
 
-1. Create `extension/platforms/chatgpt.js` implementing the same exported functions
+1. Create `platforms/chatgpt.js` implementing the same exported functions
 2. Add a new `content_scripts` entry in `manifest.json` matching the new domain
 3. Update `content.js` to import the correct platform adapter based on `window.location.hostname`
 
