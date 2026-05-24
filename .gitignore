@@ -1,0 +1,27 @@
+# Build / dependency artifacts
+node_modules/
+.next/
+out/
+
+# Vercel
+.vercel/
+
+# Supabase local temp files
+supabase/.temp/
+
+# Old zip snapshots — source is canonical, zips are for distribution
+*.zip
+
+# Internal Claude Code workspace config
+.claude/
+
+# Environment / secrets (never commit real .env files)
+.env
+.env.local
+.env.*.local
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

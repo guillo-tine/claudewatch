@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClaudeWatch</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <span class="logo">ClaudeWatch</span>
+      <button class="icon-btn" id="settingsTab" title="Settings" aria-label="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="stats">MY STATS</button>
+      <button class="tab" data-tab="community">COMMUNITY</button>
+      <button class="tab" data-tab="settings">SETTINGS</button>
+    </nav>
+
+    <!-- Tab: MY STATS -->
+    <section id="tab-stats" class="tab-panel active">
+      <div class="section-label">TODAY</div>
+      <table class="stat-table">
+        <tr><td>Messages sent</td><td class="num" id="today-messages">—</td></tr>
+        <tr><td>Tokens in</td><td class="num" id="today-tokens-in">—</td></tr>
+        <tr><td>Tokens out</td><td class="num" id="today-tokens-out">—</td></tr>
+        <tr><td>Attachments est.</td><td class="num" id="today-attachments">—</td></tr>
+        <tr><td>Rate limits hit</td><td class="num" id="today-limits">—</td></tr>
+      </table>
+
+      <div class="usage-bar-row">
+        <span class="usage-label">Usage</span>
+        <div class="usage-bar-wrap">
+          <div class="usage-bar" id="usage-bar"></div>
+        </div>
+        <span class="num" id="usage-pct">—%</span>
+      </div>
+      <div class="usage-reset" id="usage-reset"></div>
+      <div class="usage-reset" id="usage-session-delta"></div>
+
+      <div class="section-label" style="margin-top:12px">ALL TIME</div>
+      <table class="stat-table">
+        <tr><td>Messages</td><td class="num" id="all-messages">—</td></tr>
+        <tr><td>Tokens in</td><td class="num" id="all-tokens-in">—</td></tr>
+        <tr><td>Tokens out</td><td class="num" id="all-tokens-out">—</td></tr>
+        <tr><td>Limits hit</td><td class="num" id="all-limits">—</td></tr>
+      </table>
+
+      <div class="meta-row" id="model-row"></div>
+      <div class="meta-row" id="tier-row"></div>
+    </section>
+
+    <!-- Tab: COMMUNITY -->
+    <section id="tab-community" class="tab-panel">
+      <div class="community-header">
+        <span class="dim">Live community stats</span>
+        <span class="dim" id="community-age"></span>
+      </div>
+      <table class="stat-table">
+        <tr><td>Active users (24h)</td><td class="num" id="c-active">—</td></tr>
+        <tr><td>Avg tokens/response</td><td class="num" id="c-avg-tokens">—</td></tr>
+        <tr><td>Rate limit events (24h)</td><td class="num" id="c-limits">—</td></tr>
+        <tr><td>Median usage % (Pro)</td><td class="num" id="c-usage-pro">—</td></tr>
+        <tr><td>Median usage % (Free)</td><td class="num" id="c-usage-free">—</td></tr>
+      </table>
+
+      <div class="section-label" style="margin-top:12px">COMMUNITY BOARD</div>
+      <div class="post-compose">
+        <textarea id="post-input" maxlength="280" placeholder="Share an observation (280 chars, no links)…"></textarea>
+        <div class="post-actions">
+          <span class="char-count" id="char-count">0 / 280</span>
+          <button id="post-btn" class="btn-primary">Post anonymously</button>
+        </div>
+      </div>
+      <div id="posts-list" class="posts-list">
+        <div class="dim loading-msg">Loading posts…</div>
+      </div>
+    </section>
+
+    <!-- Tab: SETTINGS -->
+    <section id="tab-settings" class="tab-panel">
+      <div class="setting-row">
+        <span class="setting-label">Anonymous ID</span>
+        <div class="setting-value-row">
+          <span class="mono dim" id="anon-id">—</span>
+          <button class="icon-btn copy-btn" id="copy-id" title="Copy ID">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <span class="setting-label">Display name</span>
+        <div class="setting-value-row">
+          <input id="display-name" type="text" class="text-input" placeholder="optional, for board only" maxlength="32">
+          <button id="save-name" class="btn-small">Save</button>
+        </div>
+      </div>
+
+      <div class="setting-row toggle-row">
+        <span class="setting-label">Extension enabled</span>
+        <label class="toggle">
+          <input type="checkbox" id="enabled-toggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="setting-row">
+        <button id="export-btn" class="btn-secondary">Export my data as JSON</button>
+      </div>
+
+      <div class="setting-row">
+        <a href="https://dashboard-five-gamma-82.vercel.app" target="_blank" class="link-btn">About ClaudeWatch</a>
+      </div>
+    </section>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
