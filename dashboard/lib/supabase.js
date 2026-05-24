@@ -1,7 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL     = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+// Strip any leading BOM (U+FEFF) that Windows clipboard / some editors can silently prepend.
+// Without this, Headers.set throws "Cannot convert argument to ByteString" at runtime.
+const SUPABASE_URL      = (process.env.NEXT_PUBLIC_SUPABASE_URL      || '').replace(/^﻿/, '');
+const SUPABASE_ANON_KEY = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').replace(/^﻿/, '');
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.warn('[ClaudeWatch] Supabase env vars missing — dashboard will not load data.');
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 

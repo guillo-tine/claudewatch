@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase, fetchCommunityPosts } from '../lib/supabase';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const URL_PATTERN = /https?:\/\/|www\.|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/;
 
 // Dashboard visitors get their own anonymous ID stored in localStorage.
@@ -68,21 +66,13 @@ export default function Community() {
   }
 
   async function vote(id, dir) {
-    await fetch(`${SUPABASE_URL}/rest/v1/rpc/vote_post`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-      body: JSON.stringify({ post_id: id, direction: dir }),
-    });
+    await supabase.rpc('vote_post', { post_id: id, direction: dir });
     load();
   }
 
   async function flag(id) {
     const anonId = getDashboardAnonId();
-    await fetch(`${SUPABASE_URL}/rest/v1/rpc/flag_post`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-      body: JSON.stringify({ post_id: id, flagging_anon_id: anonId }),
-    });
+    await supabase.rpc('flag_post', { post_id: id, flagging_anon_id: anonId });
     load();
   }
 
